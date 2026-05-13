@@ -1,9 +1,9 @@
-// SkipList-state temporal aggregates: TcountAgg, TandAgg, TorAgg, TminAgg,
-// TmaxAgg, TsumAgg, TavgAgg, TcentroidAgg. Names follow MobilityDB RFC #827:
-// every SkipList aggregate is exposed under a Pascal-cased *Agg identifier,
-// disambiguating it from the same-stem scalar accessors (Tmin(tbox), etc.)
-// in case-folding catalogs like DuckDB. These differ from the fixed-state
-// `extent()` aggregates in two ways:
+// SkipList-state temporal aggregates: Tcount, Tand, Tor, Tmin, Tmax, Tsum,
+// Tavg, Tcentroid. The aggregate names match their MobilityDB SQL form.
+// Collisions with same-stem scalar accessors (e.g. Tmin(tbox), Tmax(stbox))
+// are resolved by DuckDB's argument-type dispatch: the aggregate takes a
+// temporal value, the scalar takes a box, so they coexist without suffix.
+// These differ from the fixed-state `extent()` aggregates in two ways:
 //
 //   1. State holds a `SkipList *` pointer; the skiplist owns variable-size
 //      heap-allocated Temporal* values, so the aggregate needs a destructor.
@@ -193,7 +193,7 @@ struct TemporalSkipListAggFn {
 #define DECLARE_TAGG(NAME, TRANSFN, FINALFN, MERGE_FN, CROSSINGS) \
     using NAME = TemporalSkipListAggFn<TRANSFN, FINALFN, MERGE_FN, CROSSINGS>;
 
-// TcountAgg variants over time-only inputs use distinct transfn signatures.
+// Tcount variants over time-only inputs use distinct transfn signatures.
 // The blob-shaped ones (set / span / spanset) all funnel through a common
 // blob-casting wrapper; the scalar timestamptz one needs its own functor
 // since the input isn't a string_t blob.
@@ -215,7 +215,7 @@ DECLARE_TAGG(TcountTstzsetFn,    TcountTstzsetTransfn,       temporal_tagg_final
 DECLARE_TAGG(TcountTstzspanFn,   TcountTstzspanTransfn,      temporal_tagg_finalfn,  datum_sum_int32,  false)
 DECLARE_TAGG(TcountTstzspansetFn, TcountTstzspansetTransfn,  temporal_tagg_finalfn,  datum_sum_int32,  false)
 
-// TcountAgg(timestamptz) — input is a scalar TimestampTz, not a blob.
+// Tcount(timestamptz) — input is a scalar TimestampTz, not a blob.
 struct TcountTstzFn {
     template <class STATE>
     static void Initialize(STATE &state) { state.skiplist = nullptr; }
@@ -420,7 +420,7 @@ struct WindowAggFn {
     }
 };
 
-// WcountAgg: input is transformed through `temporal_transform_wcount`
+// Wcount: input is transformed through `temporal_transform_wcount`
 // before being aggregated with `datum_sum_int32`. The result is always
 // a tint regardless of input subtype.
 struct WcountAggFn {
@@ -494,7 +494,7 @@ static AggregateFunction MakeWindowAggregate(const LogicalType &input_type, cons
 }
 
 // =====================================================================
-// MergeAgg: same SkipList state, but with no per-instant merge functor.
+// Merge: same SkipList state, but with no per-instant merge functor.
 // MEOS treats `func == NULL` as "concatenate values without conflict
 // resolution"; the resulting Temporal is the merged sequence/sequenceset.
 // =====================================================================
@@ -557,7 +557,7 @@ struct MergeAggFn {
 };
 
 // =====================================================================
-// AppendInstantAgg / AppendSequenceAgg: state shape is `Temporal *`
+// AppendInstant / AppendSequence: state shape is `Temporal *`
 // (not a SkipList). The MEOS transfn mutates the state Temporal in
 // place and returns either the same pointer or a freshly-allocated
 // successor. Combine merges two states via the public `temporal_merge`.
@@ -604,7 +604,7 @@ struct TemporalStateCombineBase {
     }
 };
 
-// AppendInstantAgg(temporal) — uses default LINEAR-or-discrete interpretation
+// AppendInstant(temporal) — uses default LINEAR-or-discrete interpretation
 // inferred from the temporal subtype, no maxdist / maxt thresholds.
 struct AppendInstantAggFn : TemporalStateCombineBase<> {
     template <class STATE>
@@ -615,7 +615,7 @@ struct AppendInstantAggFn : TemporalStateCombineBase<> {
     static void Operation(STATE &state, const INPUT_TYPE &input, AggregateUnaryInput &) {
         const Temporal *t = reinterpret_cast<const Temporal *>(input.GetData());
         // The MEOS transfn expects a TInstant *; an aggregate input that
-        // is already a sequence falls through to AppendSequenceAgg.
+        // is already a sequence falls through to AppendSequence.
         const TInstant *inst = reinterpret_cast<const TInstant *>(t);
         // INTERP_NONE lets MEOS pick the natural interpretation for the
         // base type (DISCRETE for tbool/ttext, LINEAR for tnumber/tgeo).
@@ -628,7 +628,7 @@ struct AppendInstantAggFn : TemporalStateCombineBase<> {
     }
 };
 
-// AppendSequenceAgg(temporal) — input is already a TSequence.
+// AppendSequence(temporal) — input is already a TSequence.
 struct AppendSequenceAggFn : TemporalStateCombineBase<> {
     template <class STATE>
     static void Initialize(STATE &state) { state.value = nullptr; }
@@ -653,7 +653,7 @@ static AggregateFunction MakeTemporalStateAggregate(const LogicalType &type) {
 }
 
 // =====================================================================
-// SpanUnionAgg: state shape is `SpanSet *`. Each input span/spanset is
+// SpanUnion: state shape is `SpanSet *`. Each input span/spanset is
 // folded into the state via MEOS's union transfns. Final state is the
 // state itself (no separate finalfn — `spanset_union_finalfn` is a
 // passthrough at this point).
@@ -702,7 +702,7 @@ inline void SpanSetDestroy(STATE &state) {
     }
 }
 
-// SpanUnionAgg(<typed-span>) — input is a Span blob.
+// SpanUnion(<typed-span>) — input is a Span blob.
 struct SpanUnionFromSpanFn {
     template <class STATE>
     static void Initialize(STATE &state) { state.value = nullptr; }
@@ -729,7 +729,7 @@ struct SpanUnionFromSpanFn {
     static void Destroy(STATE &state, AggregateInputData &) { SpanSetDestroy(state); }
 };
 
-// SpanUnionAgg(<typed-spanset>) — input is a SpanSet blob.
+// SpanUnion(<typed-spanset>) — input is a SpanSet blob.
 struct SpanUnionFromSpanSetFn {
     template <class STATE>
     static void Initialize(STATE &state) { state.value = nullptr; }
@@ -763,7 +763,7 @@ static AggregateFunction MakeSpanSetAggregate(const LogicalType &input_type, con
 }
 
 // =====================================================================
-// SetUnionAgg: state shape is `Set *`. Inputs come in two flavours —
+// SetUnion: state shape is `Set *`. Inputs come in two flavours —
 // scalars (folded via `value_union_transfn`) and sets (folded via
 // `set_union_transfn`).
 // =====================================================================
@@ -807,7 +807,7 @@ inline void SetDestroy(STATE &state) {
     }
 }
 
-// SetUnionAgg(<typed-set>) — input is a Set blob.
+// SetUnion(<typed-set>) — input is a Set blob.
 struct SetUnionFromSetFn {
     template <class STATE>
     static void Initialize(STATE &state) { state.value = nullptr; }
@@ -834,7 +834,7 @@ struct SetUnionFromSetFn {
     static void Destroy(STATE &state, AggregateInputData &) { SetDestroy(state); }
 };
 
-// SetUnionAgg(<scalar>) — input is a primitive value lifted to a Datum.
+// SetUnion(<scalar>) — input is a primitive value lifted to a Datum.
 template <class IN, Datum (*TO_DATUM)(IN), meosType BASETYPE>
 struct SetUnionFromScalarFn {
     template <class STATE>
@@ -905,30 +905,27 @@ static AggregateFunction MakeSetUnionScalarAggregate(const LogicalType &input_ty
 } // namespace
 
 void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
-    // SkipList aggregates are registered under the Pascal-cased *Agg names
-    // proposed in MobilityDB RFC #827. These avoid the case-folding
-    // collision DuckDB's catalog hits when an aggregate and a scalar share
-    // a canonical lowercase name (e.g. previously `tmin` aggregate vs the
-    // existing `Tmin(tbox)` scalar). The MobilityDB upstream PR #828 adds
-    // the matching aliases on the PG side; the original aggregate names
-    // (`tand`, `tcount`, etc.) remain valid in PG for backward compat but
-    // collide in DuckDB and are intentionally not registered here.
+    // Aggregates are registered under their MobilityDB SQL names. Same-stem
+    // collisions with scalar accessors (e.g. `Tmin(tbox)` scalar vs `Tmin`
+    // aggregate over a temporal value) are resolved by DuckDB's argument-type
+    // dispatch: the aggregate takes a temporal value, the scalar takes a box,
+    // so they coexist without a name suffix.
 
-    // ---- TandAgg / TorAgg on tbool ----
+    // ---- Tand / Tor on tbool ----
     {
-        AggregateFunctionSet set("TandAgg");
+        AggregateFunctionSet set("Tand");
         set.AddFunction(MakeTaggAggregate<TandFn>(TemporalTypes::TBOOL(), TemporalTypes::TBOOL()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("TorAgg");
+        AggregateFunctionSet set("Tor");
         set.AddFunction(MakeTaggAggregate<TorFn>(TemporalTypes::TBOOL(), TemporalTypes::TBOOL()));
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- TcountAgg over each temporal type and over time-only inputs → tint ----
+    // ---- Tcount over each temporal type and over time-only inputs → tint ----
     {
-        AggregateFunctionSet set("TcountAgg");
+        AggregateFunctionSet set("Tcount");
         for (const auto &t : {TemporalTypes::TBOOL(), TemporalTypes::TINT(),
                               TemporalTypes::TFLOAT(), TemporalTypes::TTEXT()}) {
             set.AddFunction(MakeTaggAggregate<TcountTempFn>(t, TemporalTypes::TINT()));
@@ -950,41 +947,41 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- TminAgg / TmaxAgg on tint, tfloat, ttext ----
+    // ---- Tmin / Tmax on tint, tfloat, ttext ----
     {
-        AggregateFunctionSet set("TminAgg");
+        AggregateFunctionSet set("Tmin");
         set.AddFunction(MakeTaggAggregate<TminTintFn>(TemporalTypes::TINT(),    TemporalTypes::TINT()));
         set.AddFunction(MakeTaggAggregate<TminTfloatFn>(TemporalTypes::TFLOAT(), TemporalTypes::TFLOAT()));
         set.AddFunction(MakeTaggAggregate<TminTtextFn>(TemporalTypes::TTEXT(),   TemporalTypes::TTEXT()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("TmaxAgg");
+        AggregateFunctionSet set("Tmax");
         set.AddFunction(MakeTaggAggregate<TmaxTintFn>(TemporalTypes::TINT(),    TemporalTypes::TINT()));
         set.AddFunction(MakeTaggAggregate<TmaxTfloatFn>(TemporalTypes::TFLOAT(), TemporalTypes::TFLOAT()));
         set.AddFunction(MakeTaggAggregate<TmaxTtextFn>(TemporalTypes::TTEXT(),   TemporalTypes::TTEXT()));
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- TsumAgg on tint, tfloat ----
+    // ---- Tsum on tint, tfloat ----
     {
-        AggregateFunctionSet set("TsumAgg");
+        AggregateFunctionSet set("Tsum");
         set.AddFunction(MakeTaggAggregate<TsumTintFn>(TemporalTypes::TINT(),    TemporalTypes::TINT()));
         set.AddFunction(MakeTaggAggregate<TsumTfloatFn>(TemporalTypes::TFLOAT(), TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- TavgAgg on tint, tfloat → tfloat ----
+    // ---- Tavg on tint, tfloat → tfloat ----
     {
-        AggregateFunctionSet set("TavgAgg");
+        AggregateFunctionSet set("Tavg");
         set.AddFunction(MakeTaggAggregate<TavgFn>(TemporalTypes::TINT(),  TemporalTypes::TFLOAT()));
         set.AddFunction(MakeTaggAggregate<TavgFn>(TemporalTypes::TFLOAT(), TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- TcentroidAgg on tgeompoint / tgeogpoint → same type ----
+    // ---- Tcentroid on tgeompoint / tgeogpoint → same type ----
     {
-        AggregateFunctionSet set("TcentroidAgg");
+        AggregateFunctionSet set("Tcentroid");
         set.AddFunction(MakeTaggAggregate<TcentroidFn>(
             TgeompointType::TGEOMPOINT(), TgeompointType::TGEOMPOINT()));
         set.AddFunction(MakeTaggAggregate<TcentroidFn>(
@@ -992,9 +989,9 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- MergeAgg over each temporal type → same type ----
+    // ---- Merge over each temporal type → same type ----
     {
-        AggregateFunctionSet set("MergeAgg");
+        AggregateFunctionSet set("Merge");
         for (const auto &t : {TemporalTypes::TBOOL(), TemporalTypes::TINT(),
                               TemporalTypes::TFLOAT(), TemporalTypes::TTEXT()}) {
             set.AddFunction(MakeTaggAggregate<MergeAggFn>(t, t));
@@ -1010,9 +1007,9 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- AppendInstantAgg over each temporal type → same type ----
+    // ---- AppendInstant over each temporal type → same type ----
     {
-        AggregateFunctionSet set("AppendInstantAgg");
+        AggregateFunctionSet set("AppendInstant");
         for (const auto &t : {TemporalTypes::TBOOL(), TemporalTypes::TINT(),
                               TemporalTypes::TFLOAT(), TemporalTypes::TTEXT()}) {
             set.AddFunction(MakeTemporalStateAggregate<AppendInstantAggFn>(t));
@@ -1024,9 +1021,9 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- AppendSequenceAgg over each temporal type → same type ----
+    // ---- AppendSequence over each temporal type → same type ----
     {
-        AggregateFunctionSet set("AppendSequenceAgg");
+        AggregateFunctionSet set("AppendSequence");
         for (const auto &t : {TemporalTypes::TBOOL(), TemporalTypes::TINT(),
                               TemporalTypes::TFLOAT(), TemporalTypes::TTEXT()}) {
             set.AddFunction(MakeTemporalStateAggregate<AppendSequenceAggFn>(t));
@@ -1038,13 +1035,13 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- SpanUnionAgg(span | spanset) -> typed spanset ----
+    // ---- SpanUnion(span | spanset) -> typed spanset ----
     struct SpanInputPair {
         LogicalType in;
         LogicalType out;
     };
     {
-        AggregateFunctionSet set("SpanUnionAgg");
+        AggregateFunctionSet set("SpanUnion");
         const std::vector<SpanInputPair> span_pairs = {
             {SpanTypes::INTSPAN(),     SpansetTypes::intspanset()},
             {SpanTypes::BIGINTSPAN(),  SpansetTypes::bigintspanset()},
@@ -1068,41 +1065,41 @@ void TemporalAggregates::RegisterAggregateFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- Window aggregates: WminAgg / WmaxAgg / WsumAgg / WcountAgg / WavgAgg ----
+    // ---- Window aggregates: Wmin / Wmax / Wsum / Wcount / Wavg ----
     {
-        AggregateFunctionSet set("WminAgg");
+        AggregateFunctionSet set("Wmin");
         set.AddFunction(MakeWindowAggregate<WminTintFn>(TemporalTypes::TINT(),     TemporalTypes::TINT()));
         set.AddFunction(MakeWindowAggregate<WminTfloatFn>(TemporalTypes::TFLOAT(),  TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("WmaxAgg");
+        AggregateFunctionSet set("Wmax");
         set.AddFunction(MakeWindowAggregate<WmaxTintFn>(TemporalTypes::TINT(),     TemporalTypes::TINT()));
         set.AddFunction(MakeWindowAggregate<WmaxTfloatFn>(TemporalTypes::TFLOAT(),  TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("WsumAgg");
+        AggregateFunctionSet set("Wsum");
         set.AddFunction(MakeWindowAggregate<WsumTintFn>(TemporalTypes::TINT(),     TemporalTypes::TINT()));
         set.AddFunction(MakeWindowAggregate<WsumTfloatFn>(TemporalTypes::TFLOAT(),  TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("WcountAgg");
+        AggregateFunctionSet set("Wcount");
         set.AddFunction(MakeWindowAggregate<WcountAggFn>(TemporalTypes::TINT(),    TemporalTypes::TINT()));
         set.AddFunction(MakeWindowAggregate<WcountAggFn>(TemporalTypes::TFLOAT(),  TemporalTypes::TINT()));
         loader.RegisterFunction(std::move(set));
     }
     {
-        AggregateFunctionSet set("WavgAgg");
+        AggregateFunctionSet set("Wavg");
         set.AddFunction(MakeWindowAggregate<WavgFn>(TemporalTypes::TINT(),    TemporalTypes::TFLOAT()));
         set.AddFunction(MakeWindowAggregate<WavgFn>(TemporalTypes::TFLOAT(),  TemporalTypes::TFLOAT()));
         loader.RegisterFunction(std::move(set));
     }
 
-    // ---- SetUnionAgg(<scalar | typed-set>) -> typed set ----
+    // ---- SetUnion(<scalar | typed-set>) -> typed set ----
     {
-        AggregateFunctionSet set("SetUnionAgg");
+        AggregateFunctionSet set("SetUnion");
         // Scalar inputs.
         set.AddFunction(MakeSetUnionScalarAggregate<int32_t, Int32ToDatum, T_INT4>(
             LogicalType::INTEGER, SetTypes::intset()));

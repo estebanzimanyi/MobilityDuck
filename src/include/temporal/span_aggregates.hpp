@@ -6,7 +6,7 @@
 namespace duckdb {
 
 struct SpanAggregates {
-    // Register all span-typed extent() overloads and SpanUnionAgg.
+    // Register all span-typed extent() overloads and SpanUnion.
     static void RegisterAggregateFunctions(ExtensionLoader &loader);
 };
 

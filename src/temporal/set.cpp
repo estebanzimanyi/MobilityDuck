@@ -927,15 +927,15 @@ void SetTypes::RegisterSetUnnest(ExtensionLoader &loader) {
 }
 
 // ============================================================================
-// SetUnionAgg — aggregate that unions sets or scalar values into a Set.
+// SetUnion — aggregate that unions sets or scalar values into a Set.
 //
 // Overloads:
-//   SetUnionAgg(int)      → intset      (via int_to_set + set_union_transfn)
-//   SetUnionAgg(bigint)   → bigintset   (via bigint_to_set)
-//   SetUnionAgg(float)    → floatset    (via float_to_set)
-//   SetUnionAgg(date)     → dateset     (via date_to_set)
-//   SetUnionAgg(intset)   → intset      (direct set_union_transfn)
-//   SetUnionAgg(dateset)  → dateset
+//   SetUnion(int)      → intset      (via int_to_set + set_union_transfn)
+//   SetUnion(bigint)   → bigintset   (via bigint_to_set)
+//   SetUnion(float)    → floatset    (via float_to_set)
+//   SetUnion(date)     → dateset     (via date_to_set)
+//   SetUnion(intset)   → intset      (direct set_union_transfn)
+//   SetUnion(dateset)  → dateset
 //   ... etc. for all Set types
 // ============================================================================
 
@@ -981,7 +981,7 @@ static inline void SetUnionFinalize(SetPtrState &state, string_t &target,
     free(result);
 }
 
-// SetUnionAgg(scalar) — Operation converts scalar to a single-element Set
+// SetUnion(scalar) — Operation converts scalar to a single-element Set
 // then calls set_union_transfn.
 template <typename SCALAR_T, Set *(*TO_SET_FN)(SCALAR_T)>
 struct SetUnionScalarFunction {
@@ -1019,7 +1019,7 @@ struct SetUnionScalarFunction {
     }
 };
 
-// SetUnionAgg(Set) — Operation copies the blob and calls set_union_transfn.
+// SetUnion(Set) — Operation copies the blob and calls set_union_transfn.
 struct SetUnionSetFunction {
     template <class STATE>
     static void Initialize(STATE &state) { state.accumulated = nullptr; }
@@ -1059,8 +1059,8 @@ struct SetUnionSetFunction {
 
 } // anonymous namespace
 
-void SetTypes::RegisterSetUnionAgg(ExtensionLoader &loader) {
-    AggregateFunctionSet set_union_set("SetUnionAgg");
+void SetTypes::RegisterSetUnion(ExtensionLoader &loader) {
+    AggregateFunctionSet set_union_set("SetUnion");
 
     // Scalar overloads: convert each value to a single-element Set.
     set_union_set.AddFunction(
