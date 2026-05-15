@@ -54,3 +54,37 @@ query I
 SELECT round(nad(tgeompoint '[POINT(0 0)@2000-01-01, POINT(2 2)@2000-01-02]', tgeompoint '[POINT(3 3)@2000-01-01, POINT(5 5)@2000-01-02]')::numeric, 6);
 ----
 4.242641
+
+# minDistance — minimum spatial distance over the union of temporal extents
+# (MobilityDB #1007). Distinct from nearestApproachDistance which is
+# time-synchronous. Reference values from MobilityDB minDistance.
+query I
+SELECT minDistance(tgeompoint '[POINT(0 0)@2000-01-01, POINT(2 2)@2000-01-02]', ST_GeomFromText('POINT(1 1)'));
+----
+0.0
+
+query I
+SELECT minDistance(ST_GeomFromText('POINT(1 1)'), tgeompoint '[POINT(0 0)@2000-01-01, POINT(2 2)@2000-01-02]');
+----
+0.0
+
+query I
+SELECT round(minDistance(tgeompoint '[POINT(0 0)@2000-01-01, POINT(2 2)@2000-01-02]', tgeompoint '[POINT(3 3)@2000-01-01, POINT(5 5)@2000-01-02]')::numeric, 6);
+----
+1.414214
+
+query I
+SELECT round(minDistance(tgeompoint '[POINT(0 0)@2000-01-01, POINT(10 0)@2000-01-02]', tgeompoint '[POINT(0 5)@2000-01-01, POINT(10 5)@2000-01-02]')::numeric, 6);
+----
+5.000000
+
+# Canonical GROUP-BY-over-cross-join shape: MIN over the scalar minDistance
+query II
+SELECT g, round(MIN(minDistance(t1, t2))::numeric, 6) FROM (VALUES
+  (1, tgeompoint '[POINT(0 0)@2000-01-01, POINT(1 1)@2000-01-02]', tgeompoint '[POINT(0 10)@2000-01-01, POINT(1 10)@2000-01-02]'),
+  (1, tgeompoint '[POINT(0 0)@2000-01-01, POINT(1 1)@2000-01-02]', tgeompoint '[POINT(0 5)@2000-01-01, POINT(1 5)@2000-01-02]'),
+  (2, tgeompoint '[POINT(0 0)@2000-01-01, POINT(1 1)@2000-01-02]', tgeompoint '[POINT(0 2)@2000-01-01, POINT(1 2)@2000-01-02]')
+) AS s(g, t1, t2) GROUP BY g ORDER BY g;
+----
+1	4.000000
+2	1.000000

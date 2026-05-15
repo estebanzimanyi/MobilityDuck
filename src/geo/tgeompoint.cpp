@@ -1716,6 +1716,11 @@ void TgeompointType::RegisterScalarFunctions(ExtensionLoader &loader) {
         duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("nad", {G, TG}, D, TgeompointFunctions::Nad_geo_tgeo));
         duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("nad", {TG, TG}, D, TgeompointFunctions::Nad_tgeo_tgeo));
 
+        /* minDistance — minimum spatial distance over the union of temporal extents */
+        duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("minDistance", {TG, G}, D, TgeompointFunctions::Mindistance_tgeo_geo));
+        duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("minDistance", {G, TG}, D, TgeompointFunctions::Mindistance_geo_tgeo));
+        duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("minDistance", {TG, TG}, D, TgeompointFunctions::Mindistance_tgeo_tgeo));
+
         /* affine (12-arg and 6-arg) */
         duckdb::RegisterSerializedScalarFunction(loader, ScalarFunction("affine",
             {TG, D, D, D, D, D, D, D, D, D, D, D, D}, TG,
