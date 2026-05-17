@@ -1,24 +1,25 @@
-# TEMPORARY PROVISIONAL PIN. The core tcbuffer and tnpoint ports are
-# clean clones that bind the per-type MF-JSON I/O: tcbufferFromMFJSON
-# needs the tcbuffer MF-JSON support from MobilityDB PR #1051
-# (feat/tcbuffer-mfjson), and tnpointFromMFJSON needs the network-point
-# MF-JSON support from MobilityDB PR #951 (split/tnpoint-mfjson-io,
-# wired through the generic temporal_from_mfjson dispatch). Neither is
-# on MobilityDB/MobilityDB master yet, so the pin points at an
-# integration branch on the contributor fork that composes both PRs on
-# top of MobilityDB master: estebanzimanyi/MobilityDB
-# meos-mduck-ports-tcbuffer-tnpoint = cherry-pick #1051
-# (e624027f5b59f483476c8e5c26471f9e252a5e61) then #951
-# (800f80bfdc8dc4ce86516aacb85e48131bcf7454); the two only collide in
-# disjoint #if CBUFFER vs #if NPOINT blocks of type_in.c / type_out.c
-# and were union-merged with no logic change. This is provisional
-# pending the #134 -> #145 MobilityDuck chain plus PRs #1051 and #951
-# merging into MobilityDB master.
+# TEMPORARY PROVISIONAL PIN. The extended-type ports are clean clones
+# that bind the per-type I/O: the tcbuffer / tnpoint MF-JSON support
+# (MobilityDB PRs #1051 and #951), the tpose surface, and the renamed
+# trgeometry_* C API (the MobilityDB API-uniformization PRs #1066 /
+# #1067 / #1069 that promote trgeo_in / trgeo_from_mfjson / trgeo_out
+# to exported trgeometry_in / trgeometry_from_mfjson / trgeometry_out)
+# are not all on MobilityDB/MobilityDB master yet, so the pin points at
+# the verified integration branch on the contributor fork that composes
+# them on top of MobilityDB master: estebanzimanyi/MobilityDB
+# meos-provisional-6type-base-session @
+# 3af4cb895c92446fa052c90a4ab22cf2c9e96c4a ("Rename the trgeometry
+# distance and comparison functions for cross-type API uniformity").
+# This base exposes all six extended types' MEOS surface (tcbuffer and
+# tnpoint MF-JSON, tpose, the renamed trgeometry_*, and the tpcpoint /
+# tpcpatch base). This is provisional pending the #134 -> #145
+# MobilityDuck chain plus the MF-JSON and trgeometry-rename PRs merging
+# into MobilityDB master.
 #
-# Flip-to-merged-master recipe (apply once #1051 AND #951 are merged AND
-# #145 has landed): set REPO back to MobilityDB/MobilityDB, set REF to
-# the merged master commit that includes both MF-JSON changes, and
-# recompute
+# Flip-to-merged-master recipe (apply once the MF-JSON and the
+# trgeometry-rename PRs are merged AND #145 has landed): set REPO back
+# to MobilityDB/MobilityDB, set REF to the merged master commit that
+# includes all of those changes, and recompute
 #   curl -sL https://github.com/MobilityDB/MobilityDB/archive/<sha>.tar.gz | sha512sum
 # for SHA512. Then delete this comment block. The OPTIONS below (the #145
 # CBUFFER/NPOINT/POSE/RGEO enablers) are unchanged by this pin and compose
@@ -26,8 +27,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO estebanzimanyi/MobilityDB
-    REF 1a4f498b1689fdcbe77ae0bbaf8b53df1eb59554
-    SHA512 da7c32c8f02b684dd8f68315ad1d128a59aa2027deae971b6fe94cba2de9303ca53b30676c98ba4e48a6721ab181007ce58ca4263ce2037554f171af6eca2f7a
+    REF 3af4cb895c92446fa052c90a4ab22cf2c9e96c4a
+    SHA512 381a7a50f587d66bb8b2dc19253cf78ca3b975ab23285a953b4367f118719a3b679a7a53a6f821ee1d1f5d2cb849d8aef822edfc69e8331ebfe5fb1685b6d6fc
 )
 
 vcpkg_replace_string(
