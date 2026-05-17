@@ -29,6 +29,7 @@
 #include "duckdb/main/extension/extension_loader.hpp"
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 #include "index/rtree_module.hpp"
+#include "mobilityduck/meos_error_guard.hpp"
 #include "single_tile_getters.hpp"
 
 #include <mutex>
@@ -197,11 +198,33 @@ static void ConfigureMeosSridCsvOnce() {
 // informational and ignored.
 static constexpr int MEOS_ERRLEVEL_ERROR = 21;
 
+// Longjmp landing-pad state for the MEOS error handler (declared in
+// mobilityduck/meos_error_guard.hpp). Defined here, the TU that owns the
+// handler. This file is already inside `namespace duckdb` (opened far
+// above), so define them directly — do NOT re-open the namespace.
+thread_local sigjmp_buf MeosJmpBuf;
+thread_local bool        MeosGuardActive = false;
+thread_local std::string MeosErrMsg;
+
+// MEOS calls this from inside its own C stack frames. Throwing a C++
+// exception from here unwinds through those C frames (undefined behaviour:
+// MEOS's TLS error state / lwgeom / GEOS context are left inconsistent and
+// the next MEOS call SIGSEGVs). When a guard is active (every serialized
+// scalar execution — see meos_exec_serial.hpp) we siglongjmp() back to it
+// and the exception is thrown from pure C++ there. The throw below is only
+// the legacy fallback for the unguarded path (e.g. errors during extension
+// load, before any guard is on the stack).
 extern "C" void MobilityduckMeosErrorHandler(int errlevel, int errcode, const char *errmsg) {
     (void) errcode;
-    if (errlevel >= MEOS_ERRLEVEL_ERROR) {
-        throw duckdb::InvalidInputException(errmsg ? errmsg : "MEOS error");
+    if (errlevel < MEOS_ERRLEVEL_ERROR) {
+        return;
     }
+    duckdb::MeosErrMsg = errmsg ? errmsg : "MEOS error";
+    if (duckdb::MeosGuardActive) {
+        meos_errno_reset();
+        siglongjmp(duckdb::MeosJmpBuf, 1);
+    }
+    throw duckdb::InvalidInputException(duckdb::MeosErrMsg);
 }
 
 // =====================================================================

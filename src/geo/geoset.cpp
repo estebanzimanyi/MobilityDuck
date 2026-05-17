@@ -1,4 +1,5 @@
 #include "geo/geoset.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 #include "tydef.hpp"
 #include "geo_util.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
@@ -36,12 +37,12 @@ void SpatialSetType::RegisterTypes(ExtensionLoader &loader){
 }
 
 void SpatialSetType::RegisterCastFunctions(ExtensionLoader &loader) {        
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::VARCHAR, 
         SpatialSetType::geomset(),                                    
         SpatialSetFunctions::Text_to_geoset   
     );     
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::VARCHAR, 
         SpatialSetType::geogset(),                                    
         SpatialSetFunctions::Text_to_geoset   

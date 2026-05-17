@@ -1,6 +1,7 @@
 #define MOBILITYDUCK_EXTENSION_TYPES
 
 #include "temporal/span.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 #include "temporal/span_functions.hpp"
 #include "temporal/set.hpp"
 #include "temporal/spanset.hpp"
@@ -89,68 +90,68 @@ LogicalType SpanTypeMapping::GetChildType(const LogicalType &type) {
 // Register all cast functions 
 void SpanTypes::RegisterCastFunctions(ExtensionLoader &loader) {
     for (const auto &span_type : SpanTypes::AllTypes()) {
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             span_type,                      
             LogicalType::VARCHAR,   
             SpanFunctions::Span_to_text   
         ); // Blob to text
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             LogicalType::VARCHAR, 
             span_type,                                    
             SpanFunctions::Text_to_span   
         ); // text to blob
         
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SpanTypes::INTSPAN(),
             SpanTypes::FLOATSPAN(),
             SpanFunctions::Intspan_to_floatspan_cast // intspan -> floatspan 
         );
 
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SpanTypes::FLOATSPAN(),
             SpanTypes::INTSPAN(),
             SpanFunctions::Floatspan_to_intspan_cast // floatspan -> intspan
         );
         
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SpanTypes::DATESPAN(),
             SpanTypes::TSTZSPAN(),
             SpanFunctions::Datespan_to_tstzspan_cast // datespan -> tstzspan
         );
         
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SpanTypes::TSTZSPAN(),
             SpanTypes::DATESPAN(),
             SpanFunctions::Tstzspan_to_datespan_cast // tstzspan -> datespan 
         );
 
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SetTypes::intset(),
             SpanTypes::INTSPAN(),
             SpanFunctions::Set_to_span_cast // intset -> intspan
          );
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SetTypes::bigintset(),
             SpanTypes::BIGINTSPAN(),
             SpanFunctions::Set_to_span_cast // bigintset -> bigintspan
          );
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SetTypes::floatset(),
             SpanTypes::FLOATSPAN(),
             SpanFunctions::Set_to_span_cast // floatset -> floatspan
          );
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             SetTypes::tstzset(),
             SpanTypes::TSTZSPAN(),
             SpanFunctions::Set_to_span_cast // tstzset -> tstzspan
          );
 
         // Scalar value -> span casts
-        loader.RegisterCastFunction(LogicalType::INTEGER,      SpanTypes::INTSPAN(),    SpanFunctions::Value_to_span_cast);
-        loader.RegisterCastFunction(LogicalType::BIGINT,       SpanTypes::BIGINTSPAN(), SpanFunctions::Value_to_span_cast);
-        loader.RegisterCastFunction(LogicalType::DOUBLE,       SpanTypes::FLOATSPAN(),  SpanFunctions::Value_to_span_cast);
-        loader.RegisterCastFunction(LogicalType::DATE,         SpanTypes::DATESPAN(),   SpanFunctions::Value_to_span_cast);
-        loader.RegisterCastFunction(LogicalType::TIMESTAMP_TZ, SpanTypes::TSTZSPAN(),   SpanFunctions::Value_to_span_cast);
+        duckdb::RegisterGuardedCastFunction(loader, LogicalType::INTEGER,      SpanTypes::INTSPAN(),    SpanFunctions::Value_to_span_cast);
+        duckdb::RegisterGuardedCastFunction(loader, LogicalType::BIGINT,       SpanTypes::BIGINTSPAN(), SpanFunctions::Value_to_span_cast);
+        duckdb::RegisterGuardedCastFunction(loader, LogicalType::DOUBLE,       SpanTypes::FLOATSPAN(),  SpanFunctions::Value_to_span_cast);
+        duckdb::RegisterGuardedCastFunction(loader, LogicalType::DATE,         SpanTypes::DATESPAN(),   SpanFunctions::Value_to_span_cast);
+        duckdb::RegisterGuardedCastFunction(loader, LogicalType::TIMESTAMP_TZ, SpanTypes::TSTZSPAN(),   SpanFunctions::Value_to_span_cast);
     }
 }
 

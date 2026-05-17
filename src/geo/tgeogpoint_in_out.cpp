@@ -1,4 +1,5 @@
 #include "geo/tgeogpoint.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 #include "geo/tgeogpoint_functions.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/extension_type_info.hpp"
@@ -215,8 +216,8 @@ void TGeogpointType::RegisterScalarInOutFunctions(ExtensionLoader &loader){
 
 
 void TGeogpointType::RegisterCastFunctions(ExtensionLoader &loader) {
-    loader.RegisterCastFunction( LogicalType::VARCHAR, TGeogpointType::TGEOGPOINT(), TgeogpointFunctions::StringToTgeogpoint);
-    loader.RegisterCastFunction( TGeogpointType::TGEOGPOINT(), LogicalType::VARCHAR, TgeogpointFunctions::TgeogpointToString);
+    duckdb::RegisterGuardedCastFunction(loader,  LogicalType::VARCHAR, TGeogpointType::TGEOGPOINT(), TgeogpointFunctions::StringToTgeogpoint);
+    duckdb::RegisterGuardedCastFunction(loader,  TGeogpointType::TGEOGPOINT(), LogicalType::VARCHAR, TgeogpointFunctions::TgeogpointToString);
 }
 
 }

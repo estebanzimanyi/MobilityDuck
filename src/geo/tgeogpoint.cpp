@@ -1,4 +1,5 @@
 #include "meos_wrapper_simple.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 
 #include "common.hpp"
 #include "geo/tgeogpoint.hpp"
@@ -43,25 +44,25 @@ void TgeogpointType::RegisterType(ExtensionLoader &loader) {
 }
 
 void TgeogpointType::RegisterCastFunctions(ExtensionLoader &loader) {
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::VARCHAR,
         TGEOGPOINT(),
         TgeogpointFunctions::Tpoint_in
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TGEOGPOINT(),
         LogicalType::VARCHAR,
         TemporalFunctions::Temporal_out
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TGEOGPOINT(),
         StboxType::STBOX(),
         TgeompointFunctions::Tspatial_to_stbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TGEOGPOINT(),
         SpanTypes::TSTZSPAN(),
         TgeompointFunctions::Temporal_to_tstzspan_cast

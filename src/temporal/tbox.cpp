@@ -1,4 +1,5 @@
 #include "meos_wrapper_simple.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 
 #include "common.hpp"
 #include "temporal/tbox.hpp"
@@ -27,103 +28,103 @@ void TboxType::RegisterType(ExtensionLoader &loader) {
 }
 
 void TboxType::RegisterCastFunctions(ExtensionLoader &loader) {
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::VARCHAR,
         TBOX(),
         TboxFunctions::Tbox_in
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TBOX(),
         LogicalType::VARCHAR,
         TboxFunctions::Tbox_out
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::INTEGER,
         TBOX(),
         TboxFunctions::Number_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::DOUBLE,
         TBOX(),
         TboxFunctions::Number_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::TIMESTAMP_TZ,
         TBOX(),
         TboxFunctions::Timestamptz_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SetTypes::intset(),
         TBOX(),
         TboxFunctions::Set_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SetTypes::floatset(),
         TBOX(),
         TboxFunctions::Set_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SetTypes::tstzset(),
         TBOX(),
         TboxFunctions::Set_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpanTypes::INTSPAN(),
         TBOX(),
         TboxFunctions::Span_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpanTypes::FLOATSPAN(),
         TBOX(),
         TboxFunctions::Span_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpanTypes::TSTZSPAN(),
         TBOX(),
         TboxFunctions::Span_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TBOX(),
         SpanTypes::INTSPAN(),
         TboxFunctions::Tbox_to_intspan_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TBOX(),
         SpanTypes::FLOATSPAN(),
         TboxFunctions::Tbox_to_floatspan_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TBOX(),
         SpanTypes::TSTZSPAN(),
         TboxFunctions::Tbox_to_tstzspan_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpansetTypes::intspanset(),
         TBOX(),
         TboxFunctions::Spanset_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpansetTypes::floatspanset(),
         TBOX(),
         TboxFunctions::Spanset_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpansetTypes::tstzspanset(),
         TBOX(),
         TboxFunctions::Spanset_to_tbox_cast

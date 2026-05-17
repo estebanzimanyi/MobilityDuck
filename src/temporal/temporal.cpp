@@ -1,4 +1,5 @@
 #include "meos_wrapper_simple.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 
 #include "common.hpp"
 #include "temporal/temporal.hpp"
@@ -69,13 +70,13 @@ LogicalType TemporalTypes::GetBaseTypeFromAlias(const char *alias) {
 
 void TemporalTypes::RegisterCastFunctions(ExtensionLoader &loader) {
     for (auto &type : TemporalTypes::AllTypes()) {
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             LogicalType::VARCHAR,
             type,
             TemporalFunctions::Temporal_in
         );
 
-        loader.RegisterCastFunction(
+        duckdb::RegisterGuardedCastFunction(loader, 
             type,
             LogicalType::VARCHAR,
             TemporalFunctions::Temporal_out
@@ -90,37 +91,37 @@ void TemporalTypes::RegisterCastFunctions(ExtensionLoader &loader) {
     //     );
     // }
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::BLOB,
         SpansetTypes::tstzspanset(),
         TemporalFunctions::Blob_to_tstzspanset
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TemporalTypes::TBOOL(),
         TemporalTypes::TINT(),
         TemporalFunctions::Tbool_to_tint_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TemporalTypes::TINT(),
         TemporalTypes::TFLOAT(),
         TemporalFunctions::Tint_to_tfloat_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TemporalTypes::TFLOAT(),
         TemporalTypes::TINT(),
         TemporalFunctions::Tfloat_to_tint_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TemporalTypes::TINT(),
         TboxType::TBOX(),
         TemporalFunctions::Tnumber_to_tbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         TemporalTypes::TFLOAT(),
         TboxType::TBOX(),
         TemporalFunctions::Tnumber_to_tbox_cast

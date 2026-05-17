@@ -1,4 +1,5 @@
 #include "meos_wrapper_simple.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 
 #include "common.hpp"
 #include "geo/stbox.hpp"
@@ -27,43 +28,43 @@ void StboxType::RegisterType(ExtensionLoader &loader) {
 }
 
 void StboxType::RegisterCastFunctions(ExtensionLoader &loader) {
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::VARCHAR,
         STBOX(),
         StboxFunctions::Stbox_in_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         STBOX(),
         LogicalType::VARCHAR,
         StboxFunctions::Stbox_out
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         GeoTypes::GEOMETRY(),
         STBOX(),
         StboxFunctions::Geo_to_stbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         LogicalType::TIMESTAMP_TZ,
         STBOX(),
         StboxFunctions::Timestamptz_to_stbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SetTypes::tstzset(),
         STBOX(),
         StboxFunctions::Tstzset_to_stbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpanTypes::TSTZSPAN(),
         STBOX(),
         StboxFunctions::Tstzspan_to_stbox_cast
     );
 
-    loader.RegisterCastFunction(
+    duckdb::RegisterGuardedCastFunction(loader, 
         SpansetTypes::tstzspanset(),
         STBOX(),
         StboxFunctions::Tstzspanset_to_stbox_cast

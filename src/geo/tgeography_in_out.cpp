@@ -1,4 +1,5 @@
 #include "geo/tgeography.hpp"
+#include "mobilityduck/meos_guarded_cast.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/extension_type_info.hpp"
 #include <regex>
@@ -288,8 +289,8 @@ void TGeographyTypes::RegisterScalarInOutFunctions(ExtensionLoader &loader){
 
 
 void TGeographyTypes::RegisterCastFunctions(ExtensionLoader &loader) {
-    loader.RegisterCastFunction( LogicalType::VARCHAR, TGeographyTypes::TGEOGRAPHY(), TgeographyFunctions::StringToTgeography);
-    loader.RegisterCastFunction( TGeographyTypes::TGEOGRAPHY(), LogicalType::VARCHAR, TgeographyFunctions::TgeographyToString);
+    duckdb::RegisterGuardedCastFunction(loader,  LogicalType::VARCHAR, TGeographyTypes::TGEOGRAPHY(), TgeographyFunctions::StringToTgeography);
+    duckdb::RegisterGuardedCastFunction(loader,  TGeographyTypes::TGEOGRAPHY(), LogicalType::VARCHAR, TgeographyFunctions::TgeographyToString);
 }
 
 }

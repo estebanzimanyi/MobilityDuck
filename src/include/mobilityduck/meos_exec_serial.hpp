@@ -4,6 +4,7 @@
 
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "mobilityduck/meos_error_guard.hpp"
 
 namespace duckdb {
 
@@ -26,7 +27,11 @@ inline ScalarFunction WrapScalarFunctionWithMeosExecMutex(ScalarFunction sf) {
 	scalar_function_t orig = std::move(sf.function);
 	sf.function = [orig = std::move(orig)](DataChunk &args, ExpressionState &state, Vector &result) {
 		std::lock_guard<std::mutex> guard(MeosSerializedExecMutex());
-		orig(args, state, result);
+		// Run inside the MEOS longjmp landing pad: a MEOS error becomes a
+		// clean DuckDB exception thrown from C++ here, never unwound through
+		// MEOS C frames. The lock_guard stays outside so the mutex is
+		// released by normal C++ unwinding when that exception propagates.
+		MeosGuardedRun([&]() { orig(args, state, result); });
 	};
 	return sf;
 }
