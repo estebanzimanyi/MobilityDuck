@@ -149,6 +149,124 @@ if(NOT _MEOS_H3_INC)
     message(FATAL_ERROR "MEOS port: cannot locate vcpkg-installed h3api.h under ${CURRENT_INSTALLED_DIR}/include or ${CURRENT_INSTALLED_DIR}/include/h3")
 endif()
 
+# Upstream MEOS-standalone gap: meos/include/pointcloud/{pcpoint,pcpatch}.h
+# define DatumGetPcpointP / DatumGetPcpatchP via PG_DETOAST_DATUM
+# UNCONDITIONALLY, unlike every other type header (temporal.h etc.) which
+# uses `((T *) DatumGetPointer(X))` under `#if MEOS`. PG_DETOAST_DATUM lives
+# only in PostgreSQL's fmgr.h (not bundled for MEOS), so libmeos built with
+# -DPOINTCLOUD=ON has unresolved `PG_DETOAST_DATUM` at link. Mirror the MEOS
+# branch (MEOS values are never TOASTed). FIX UPSTREAM: add the #if MEOS guard.
+vcpkg_replace_string(
+    "${SOURCE_PATH}/meos/include/pointcloud/pcpoint.h"
+    "((Pcpoint *) PG_DETOAST_DATUM(X))"
+    "((Pcpoint *) DatumGetPointer(X))"
+)
+vcpkg_replace_string(
+    "${SOURCE_PATH}/meos/include/pointcloud/pcpatch.h"
+    "((Pcpatch *) PG_DETOAST_DATUM(X))"
+    "((Pcpatch *) DatumGetPointer(X))"
+)
+
+# pgPointCloud enabler. -DPOINTCLOUD=ON makes meos/src/pointcloud/
+# CMakeLists.txt FATAL_ERROR unless pointcloud-pg/lib/libpc.a exists; it is
+# built as a side effect of pgPointCloud's `./autogen.sh && ./configure &&
+# make`, which cannot run here (no autotools-usable PostgreSQL, no pg_config).
+# The vendored pointcloud-pg/lib sources need only libxml2 and zlib (no
+# PostgreSQL headers), and pointcloud-pg/lib/Makefile builds libpc.a directly
+# via `ar rs` with the XML2/ZLIB CPPFLAGS from config.mk. So we generate
+# config.mk + lib/pc_config.h the way pgPointCloud's autotools would (filling
+# only the @VARS@ the lib OBJS consume, with vcpkg's libxml2/zlib paths), then
+# build the libpc.a archive target directly. CUnit/LazPerf stay disabled.
+set(POINTCLOUD_DIR "${SOURCE_PATH}/pointcloud-pg")
+
+file(WRITE "${POINTCLOUD_DIR}/config.mk"
+"CC = cc
+CFLAGS = -O2 -fPIC
+CXXFLAGS += -fPIC -std=c++0x
+SQLPP =
+
+XML2_CPPFLAGS = -I${CURRENT_INSTALLED_DIR}/include/libxml2
+XML2_LDFLAGS = -L${CURRENT_INSTALLED_DIR}/lib -lxml2
+
+ZLIB_CPPFLAGS = -I${CURRENT_INSTALLED_DIR}/include
+ZLIB_LDFLAGS = -L${CURRENT_INSTALLED_DIR}/lib -lz
+
+CUNIT_CPPFLAGS =
+CUNIT_LDFLAGS =
+
+PG_CONFIG =
+PGXS =
+
+LIB_A = libpc.a
+LIB_A_LAZPERF = liblazperf.a
+
+LAZPERF_STATUS = disabled
+LAZPERF_CPPFLAGS =
+
+PGSQL_MAJOR_VERSION =
+")
+
+# lib/pc_config.h: pc_api.h does `#include \"pc_config.h\"`, normally emitted
+# by config.status. Mirror the no-lazperf / no-cunit autotools output (leave
+# HAVE_LAZPERF / HAVE_CUNIT undefined). POINTCLOUD_VERSION = Version.config.
+file(WRITE "${POINTCLOUD_DIR}/lib/pc_config.h"
+"/* #undef LIBXML2_VERSION */
+
+/* #undef PGSQL_VERSION */
+
+/* #undef HAVE_LAZPERF */
+
+/* #undef HAVE_CUNIT */
+
+#define PROJECT_SOURCE_DIR \"${POINTCLOUD_DIR}\"
+
+#define POINTCLOUD_VERSION \"1.2.5\"
+")
+
+# Build the libpc.a archive target directly (NOT `all`, which recurses into
+# cunit/ and needs CUnit). config.mk is included by lib/Makefile.
+vcpkg_execute_required_process(
+    COMMAND make -C "${POINTCLOUD_DIR}/lib" libpc.a
+    WORKING_DIRECTORY "${POINTCLOUD_DIR}/lib"
+    LOGNAME "build-libpc-${TARGET_TRIPLET}"
+)
+
+# pgPointCloud's lib/stringbuffer.c is a verbatim fork of PostGIS
+# liblwgeom/stringbuffer.c. MEOS already bundles liblwgeom (incl. its
+# stringbuffer.c) into libmeos, so carrying pgPointCloud's copy makes the
+# final static link fail with `multiple definition of stringbuffer_*`.
+# Rename every stringbuffer_* symbol in libpc.a (definitions and the
+# cross-object references) into a private pc_stringbuffer_* namespace so
+# libpc.a resolves them against its own copy and never collides.
+vcpkg_execute_required_process(
+    COMMAND ${CMAKE_COMMAND} -E env bash -c
+        "set -e
+         cd '${POINTCLOUD_DIR}/lib'
+         : > redefine.map
+         for s in $(nm libpc.a 2>/dev/null | awk '$NF ~ /^stringbuffer_/ {print $NF}' | sort -u); do
+           echo \"$s pc_$s\" >> redefine.map
+         done
+         tmp=$(mktemp -d)
+         cd \"$tmp\"
+         ar x '${POINTCLOUD_DIR}/lib/libpc.a'
+         for o in *.o; do
+           objcopy --redefine-syms='${POINTCLOUD_DIR}/lib/redefine.map' \"$o\"
+         done
+         rm -f '${POINTCLOUD_DIR}/lib/libpc.a'
+         ar rcs '${POINTCLOUD_DIR}/lib/libpc.a' *.o
+         cd /
+         rm -rf \"$tmp\" '${POINTCLOUD_DIR}/lib/redefine.map'"
+    WORKING_DIRECTORY "${POINTCLOUD_DIR}/lib"
+    LOGNAME "namespace-libpc-stringbuffer-${TARGET_TRIPLET}"
+)
+
+# meos/src/pointcloud/CMakeLists.txt checks exactly this path.
+if(NOT EXISTS "${POINTCLOUD_DIR}/lib/libpc.a")
+    message(FATAL_ERROR
+        "pgPointCloud enabler failed: ${POINTCLOUD_DIR}/lib/libpc.a "
+        "was not produced by the libpc.a make target.")
+endif()
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
@@ -160,6 +278,7 @@ vcpkg_cmake_configure(
         -DNPOINT=ON
         -DPOSE=ON
         -DRGEO=ON
+        -DPOINTCLOUD=ON
         -DH3=ON
         "-DH3_LIBRARY=${_MEOS_H3_LIB}"
         "-DH3_INCLUDE_DIR=${_MEOS_H3_INC}"
@@ -170,6 +289,16 @@ vcpkg_cmake_configure(
 
 vcpkg_cmake_build(TARGET all)
 vcpkg_cmake_install()
+
+# meos/src/pointcloud/CMakeLists.txt links libpc.a into the `pointcloud`
+# OBJECT library as a usage requirement only: the static libmeos.a does not
+# absorb libpc.a's objects nor carry a link interface, so a consumer linking
+# libmeos.a sees unresolved pc_point_get_x/y/z/... . Install libpc.a alongside
+# libmeos.a and propagate it (+ libxml2 / zlib) through MEOS::meos's
+# INTERFACE_LINK_LIBRARIES so the extension link resolves the pgPointCloud
+# symbols.
+file(INSTALL "${SOURCE_PATH}/pointcloud-pg/lib/libpc.a"
+     DESTINATION "${CURRENT_PACKAGES_DIR}/lib")
 
 file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/share/meos")
 file(WRITE "${CURRENT_PACKAGES_DIR}/share/meos/MEOSConfig.cmake" [=[
@@ -195,6 +324,24 @@ if (NOT TARGET MEOS::meos)
     IMPORTED_LOCATION "${_meos_lib}"
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_LIST_DIR}/../../include"
   )
+  # When MEOS was built with -DPOINTCLOUD=ON, libmeos.a calls into the
+  # pgPointCloud archive libpc.a (and libxml2 / zlib). The static libmeos.a
+  # does not carry that link interface, so propagate it here.
+  set(_meos_libdir "${CMAKE_CURRENT_LIST_DIR}/../../lib")
+  if (EXISTS "${_meos_libdir}/libpc.a")
+    set(_meos_pc_iface "${_meos_libdir}/libpc.a")
+    file(GLOB _meos_xml2 "${_meos_libdir}/libxml2.a" "${_meos_libdir}/libxml2.lib")
+    file(GLOB _meos_zlib "${_meos_libdir}/libz.a" "${_meos_libdir}/libzlib.a" "${_meos_libdir}/zlib.lib")
+    if (_meos_xml2)
+      list(APPEND _meos_pc_iface ${_meos_xml2})
+    endif()
+    if (_meos_zlib)
+      list(APPEND _meos_pc_iface ${_meos_zlib})
+    endif()
+    set_target_properties(MEOS::meos PROPERTIES
+      INTERFACE_LINK_LIBRARIES "${_meos_pc_iface}"
+    )
+  endif()
 endif()
 ]=])
 
