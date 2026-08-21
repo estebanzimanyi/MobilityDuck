@@ -222,7 +222,10 @@ void TRTreeIndex::InitEntryStorage(const IndexStorageInfo &info) {
 }
 
 void TRTreeIndex::ReplayEntries() {
-    vector<data_t> box(bbox_size_);
+    // PROBE: collect the whole chain, then build the tree in one pass with the
+    // proposed rtree_load (Sort-Tile-Recursive) instead of one insert per entry.
+    vector<data_t> all_boxes;
+    vector<int64_t> all_ids;
 
     auto ptr = entry_head_;
     while (ptr.HasMetadata()) {
@@ -243,17 +246,23 @@ void TRTreeIndex::ReplayEntries() {
             row_t row_id;
             memcpy(&row_id, entry, sizeof(row_t));
             if (row_id == TOMBSTONE_ROW_ID) {
-                // Deleted before this index was written; do not resurrect it.
                 continue;
             }
-            memcpy(box.data(), entry + sizeof(row_t), bbox_size_);
-            rtree_insert(rtree_, box.data(), static_cast<int>(row_id));
+            const auto off = all_boxes.size();
+            all_boxes.resize(off + bbox_size_);
+            memcpy(all_boxes.data() + off, entry + sizeof(row_t), bbox_size_);
+            all_ids.push_back(static_cast<int64_t>(row_id));
         }
 
         entry_count_ += count;
         entry_tail_ = ptr;
         tail_count_ = count;
         ptr.Set(next);
+    }
+
+    if (!all_ids.empty()) {
+        rtree_load(rtree_, all_boxes.data(), all_ids.data(),
+                   static_cast<int>(all_ids.size()));
     }
 }
 
@@ -467,7 +476,7 @@ void TRTreeIndex::Construct(DataChunk &expression_result, Vector &row_identifier
             }
         }
 
-        rtree_insert(rtree_, box.data(), static_cast<int>(row_data[i]));
+        rtree_insert(rtree_, box.data(), static_cast<int64_t>(row_data[i]));
         RecordEntry(box.data(), row_data[i]);
     }
 }
@@ -479,7 +488,7 @@ ErrorData TRTreeIndex::BulkConstruct(STBox* boxes, const row_t* row_ids, idx_t c
     }
 
     for (idx_t i = 0; i < count; i++) {
-        rtree_insert(rtree_, &boxes[i], static_cast<int>(row_ids[i]));
+        rtree_insert(rtree_, &boxes[i], static_cast<int64_t>(row_ids[i]));
         RecordEntry(&boxes[i], row_ids[i]);
     }
 
@@ -662,7 +671,7 @@ bool TRTreeIndex::NNScanNext(IndexScanState &state, row_t &row_id, double &lower
     if (!nstate.cursor) {
         return false;
     }
-    int id = 0;
+    int64_t id = 0;
     double distance = 0;
     if (!rtree_nn_cursor_next(nstate.cursor, &id, &distance)) {
         return false;
@@ -679,7 +688,7 @@ vector<row_t> TRTreeIndex::Search(const void *query_box, RTreeSearchOp op) const
         return results;
     }
 
-    MeosArray *ids = meos_array_create(sizeof(int));
+    MeosArray *ids = meos_array_create(sizeof(int64_t));
 
     try {
         int count = rtree_search(rtree_, op, query_box, ids);
@@ -687,7 +696,7 @@ vector<row_t> TRTreeIndex::Search(const void *query_box, RTreeSearchOp op) const
         if (count > 0) {
             results.reserve(count);
             for (int i = 0; i < count; i++) {
-                const auto row_id = static_cast<row_t>(*(int *) meos_array_get(ids, i));
+                const auto row_id = static_cast<row_t>(*(int64_t *) meos_array_get(ids, i));
                 // Deleted rows are still in the tree; they are filtered here.
                 if (deleted_.find(row_id) != deleted_.end()) {
                     continue;
