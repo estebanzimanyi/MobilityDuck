@@ -120,6 +120,7 @@ public:
 
     MeosType GetBboxType() const { return bbox_type_; }
     size_t GetBboxSize() const { return bbox_size_; }
+    MeosType GetColumnMeosType() const { return column_meostype_; }
 
 
 
@@ -166,6 +167,8 @@ private:
     MeosType bbox_type_;
     size_t bbox_size_;
     LogicalType column_type_;
+    //! The MEOS type of the indexed column, whose values give the keys (index_key.hpp)
+    MeosType column_meostype_;
 
     //! Row ids deleted since the tree was built. MEOS has no removal entry
     //! point, so the row stays in the tree and every search filters it out.

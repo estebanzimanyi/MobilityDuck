@@ -16,6 +16,7 @@
 #include "duckdb/storage/table/data_table_info.hpp"
 #include <algorithm>
 
+#include "index/index_key.hpp"
 #include "index/sptree_module.hpp"
 #include "index/sptree_index_scan.hpp"
 #include "index/index_search_ops.hpp"
@@ -47,6 +48,8 @@ private:
         // The column the matched filter tests, so the filters the index does NOT answer can be
         // told apart from it below and evaluated above the scan.
         optional_idx matched_column;
+        // Whether the matched column's key is lossy (IndexKeyIsLossy), its filter then rechecked.
+        bool matched_lossy = false;
         vector<reference<Expression>> bindings;
 
         // 1.4 replaced TableIndexList::BindAndScan with a two-step pattern:
@@ -123,15 +126,13 @@ private:
                 size_t box_size = 0;
                 
                 if (constant.value.type().id() == LogicalTypeId::BLOB) {
-                    
+                    // The query operand is keyed as a row is, from the MEOS type of its own type;
+                    // an operand with no key of the index's kind leaves the predicate a filter.
                     auto blob_data = constant.value.GetValueUnsafe<duckdb::string_t>();
-
-                   const uint8_t *data = reinterpret_cast<const uint8_t *>(blob_data.GetDataUnsafe());
-                    box_size = blob_data.GetSize();
-                    
-                    query_box = malloc(box_size);
-                    memcpy(query_box, data, box_size);
-                    
+                    const uint8_t *data = reinterpret_cast<const uint8_t *>(blob_data.GetDataUnsafe());
+                    box_size = sptree_index.GetBboxSize();
+                    query_box = IndexQueryKey(constant.value.type(), sptree_index.GetBboxType(), box_size,
+                                              data, blob_data.GetSize());
                 }
                 else if (constant.value.type().id() == LogicalTypeId::TIMESTAMP_TZ) {
                     auto timestamp_duckdb = constant.value.GetValueUnsafe<timestamp_tz_t>();
@@ -153,6 +154,7 @@ private:
 
                 bind_data = make_uniq<TSPTreeIndexScanBindData>(
                     duck_table, sptree_index, 1000, query_box, box_size, function_name, query_on_left);
+                matched_lossy = IndexKeyIsLossy(sptree_index.GetColumnMeosType());
                 return true;
             });
             
@@ -175,7 +177,10 @@ private:
         vector<unique_ptr<Expression>> residual;
         auto original_projection = get.projection_ids;
         for (auto &filter_pair : get.table_filters.filters) {
-            if (filter_pair.first == matched_column.GetIndex()) {
+            // The matched filter is answered by the index alone where its key answers the
+            // predicate; a set or span set column is keyed by the extent of its elements, so the
+            // filter is rechecked above the scan.
+            if (filter_pair.first == matched_column.GetIndex() && !matched_lossy) {
                 continue;
             }
             // The filter keys a TABLE column; a binding addresses its POSITION among the

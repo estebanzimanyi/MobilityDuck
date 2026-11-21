@@ -1,4 +1,5 @@
 #include "meos_wrapper_simple.hpp"
+#include "index/index_key.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 #include "duckdb/execution/index/fixed_size_allocator.hpp"
@@ -69,61 +70,18 @@ TRTreeIndex::TRTreeIndex(const string &name, IndexConstraintType constraint_type
     auto &type = unbound_expressions[0]->return_type;
     column_type_ = type;
 
-    // R-tree's bbox type is determined by the type of the indexed column
-    
-    if (type == StboxType::stbox()) {
-        bbox_type_ = T_STBOX;
-        bbox_size_ = sizeof(STBox);
-        rtree_ = rtree_create_stbox();
-    } else if (type == SpanTypes::tstzspan()) {
-        bbox_type_ = T_TSTZSPAN;
-        bbox_size_ = sizeof(Span);  
-        rtree_ = rtree_create_tstzspan();
-    } else if (type == TboxType::tbox()) {
-        bbox_type_ = T_TBOX;
-        bbox_size_ = sizeof(TBox);
-        rtree_ = rtree_create_tbox();
-    } else if (type == SpanTypes::intspan()) {
-        bbox_type_ = T_INTSPAN;
-        bbox_size_ = sizeof(Span);
-        rtree_ = rtree_create_intspan();
-    } else if (type == SpanTypes::bigintspan()) {
-        bbox_type_ = T_BIGINTSPAN;
-        bbox_size_ = sizeof(Span);
-        rtree_ = rtree_create_bigintspan();
-    } else if (type == SpanTypes::floatspan()) {
-        bbox_type_ = T_FLOATSPAN;
-        bbox_size_ = sizeof(Span);
-        rtree_ = rtree_create_floatspan();
-    } else if (type == SpanTypes::datespan()) {
-        bbox_type_ = T_DATESPAN;
-        bbox_size_ = sizeof(Span);
-        rtree_ = rtree_create_datespan();
-    } else if (type == TemporalTypes::tint() || type == TemporalTypes::tfloat()) {
-        // Temporal numbers: the bounding box is a tbox.
-        bbox_type_ = T_TBOX;
-        bbox_size_ = sizeof(TBox);
-        rtree_ = rtree_create_tbox();
-    } else if (type == TemporalTypes::tbool() || type == TemporalTypes::ttext()) {
-        // Non-numeric, non-spatial temporals: the bounding box is the time span.
-        bbox_type_ = T_TSTZSPAN;
-        bbox_size_ = sizeof(Span);
-        rtree_ = rtree_create_tstzspan();
-    } else if (type == TgeompointType::tgeompoint() ||
-               type == TGeometryTypes::tgeometry() ||
-               type == TGeographyTypes::tgeography() ||
-               type == TGeogpointType::tgeogpoint()) {
-        // Temporal spatial types: the bounding box is an stbox.
-        bbox_type_ = T_STBOX;
-        bbox_size_ = sizeof(STBox);
-        rtree_ = rtree_create_stbox();
-    } else {
+    // The key of the column is a MEOS catalog fact, the box type_bboxtype states for the
+    // MEOS type its alias names, which PostgreSQL's GiST and SP-GiST classes store as well.
+    column_meostype_ = IndexColumnMeosType(type);
+    bbox_type_ = type_bboxtype(column_meostype_);
+    if (bbox_type_ == T_UNKNOWN) {
         throw BinderException(
-            "TRTREE index supports stbox, tbox, the five span types, and the "
-            "temporal types (tint, tfloat, tbool, ttext, tgeompoint, tgeogpoint, "
-            "tgeometry, tgeography). Got: " + type.ToString());
+            "TRTREE index takes a span, a box, a number, time or spatial set, a span set "
+            "or a temporal value. Got: " + type.ToString());
     }
-    
+    bbox_size_ = bbox_get_size(bbox_type_);
+    rtree_ = rtree_create(bbox_type_);
+
     if (!rtree_) {
         throw InternalException("Failed to create MEOS RTree");
     }
@@ -410,29 +368,10 @@ void TRTreeIndex::Construct(DataChunk &expression_result, Vector &row_identifier
         data_vector.Flatten(expression_result.size());
     }
 
-    // True when the indexed column holds a Temporal value (the bbox is derived
-    // per row at insert time). False when the column already holds a span / tbox
-    // / stbox blob whose bytes are the bbox itself.
-    const bool indexes_temporal =
-        column_type_ == TemporalTypes::tint() ||
-        column_type_ == TemporalTypes::tfloat() ||
-        column_type_ == TemporalTypes::tbool() ||
-        column_type_ == TemporalTypes::ttext() ||
-        column_type_ == TgeompointType::tgeompoint() ||
-        column_type_ == TGeometryTypes::tgeometry() ||
-        column_type_ == TGeographyTypes::tgeography() ||
-        column_type_ == TGeogpointType::tgeogpoint();
-
-    // The bounding box of the row currently being indexed. It is both handed to
-    // the MEOS tree and recorded for persistence, so that reloading the index
-    // rebuilds exactly the tree we have here.
-    //
-    // Sized for the LARGEST bounding box rather than for bbox_size_: MEOS writes
-    // through temporal_set_bbox into a bboxunion big enough for any type, and
-    // sizing to the column's own box would turn a type/tree mismatch into a heap
-    // overflow instead of a wrong answer. Only bbox_size_ bytes are ever handed
-    // to the tree or recorded.
-    vector<data_t> box(MaxValue<idx_t>(sizeof(STBox), MaxValue<idx_t>(sizeof(TBox), sizeof(Span))));
+    // The key of the row currently being indexed, the box index_key.hpp computes. It is both
+    // handed to the MEOS tree and recorded for persistence, so that reloading the index rebuilds
+    // exactly the tree we have here.
+    vector<data_t> box(bbox_size_);
 
     for (idx_t i = 0; i < expression_result.size(); i++) {
         if (FlatVector::IsNull(data_vector, i)) {
@@ -447,43 +386,9 @@ void TRTreeIndex::Construct(DataChunk &expression_result, Vector &row_identifier
         const uint8_t *data = reinterpret_cast<const uint8_t *>(blob_data.GetData());
         size_t data_size = blob_data.GetSize();
 
-        if (indexes_temporal) {
-            const Temporal *temp = reinterpret_cast<const Temporal *>(data);
-            if (bbox_type_ == T_STBOX) {
-                STBox *stbox = tspatial_to_stbox(temp);
-                if (!stbox) {
-                    continue;
-                }
-                if (stbox_srid(stbox) != 0) {
-                    STBox *normalized = stbox_set_srid(stbox, 0);
-                    if (normalized) {
-                        free(stbox);
-                        stbox = normalized;
-                    }
-                }
-                memcpy(box.data(), stbox, bbox_size_);
-                free(stbox);
-            } else {
-                // The bounding box rtree_insert_temporal would have computed.
-                memset(box.data(), 0, bbox_size_);
-                temporal_set_bbox(temp, box.data());
-            }
-        } else {
-            if (data_size != bbox_size_) {
-                continue;
-            }
-            memcpy(box.data(), data, bbox_size_);
-
-            if (bbox_type_ == T_STBOX) {
-                STBox *stbox = (STBox *) box.data();
-                if (stbox_srid(stbox) != 0) {
-                    STBox *normalized = stbox_set_srid(stbox, 0);
-                    if (normalized) {
-                        memcpy(box.data(), normalized, bbox_size_);
-                        free(normalized);
-                    }
-                }
-            }
+        if (!IndexValueKey(column_meostype_, bbox_type_, bbox_size_, data, data_size,
+                           box.data())) {
+            continue;
         }
 
         if (bulk_construct_) {
